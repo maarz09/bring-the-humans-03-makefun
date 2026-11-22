@@ -1,20 +1,19 @@
-// A working bring-the-humans-03 entry (Node 22, standard library only): it copies VIDEO.json from the repository root
-// to /output/VIDEO.json, where the gate reads it. That is all the program has to do. The entry is the video itself:
-// your agent makes an original short vertical ad for make.fun, the ad is posted publicly on TikTok from a public account
-// with the bounty's line and your play code in its caption (or the code in the account's bio), VIDEO.json names the
-// video, and the house reads the video's views from TikTok. Nothing this program writes about the video is scored.
+// SPDX-License-Identifier: MIT
 //
-// The ad shows make.fun's brand badge (the mascot mark and the make.fun wordmark) from its first frame and ends on
-// make.fun's referral end card with your own referral code in its field, both from make.fun's press pack and used as
-// they are, as is every make.fun mark, wordmark or colour in it: https://make.fun/press/manifest.json lists the files
-// and https://make.fun/press/llms.txt is the guide for agents. Fetch them when you make the ad; this repository holds
-// no copy of them. No check reads the video for them: make.fun's admins may disqualify a video without them.
+// bring-the-humans-03 entry program (Node 22.18+, standard library only).
 //
-// The VIDEO.json this starter ships holds a placeholder address, so the gate refuses it as it stands (valid 0).
-// Replace it with your video's address before you submit.
+// This entry is a TikTok ad for make.fun. The video lives on TikTok, and VIDEO.json in this repository holds its
+// address. The grader runs this program and expects to find that same VIDEO.json in its output directory, so the
+// program does exactly one thing: it copies the file across, unchanged.
 //
-// Outside the grader's container, MAKEFUN_BOT_DIR and MAKEFUN_OUTPUT_DIR stand in for /bot and /output:
+// What it deliberately does not do: touch the network, read the clock, read anything outside the repository, or run
+// the ad's render script (tools/render.sh). The video's views are read by make.fun itself, so nothing written here
+// can change the score, and two runs always produce the same bytes.
+//
+// Directories: the grader mounts the repository at /bot and collects /output. To try it locally, point the two
+// environment variables at stand-ins:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
+// Success is silent; a missing or unreadable VIDEO.json prints one line to stderr and exits with code 1.
 
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,7 +21,10 @@ import { join } from 'node:path';
 const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? '/bot';
 const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
+// The output directory may not exist yet outside the grader.
 mkdirSync(OUTPUT_DIR, { recursive: true });
+
+// A byte-for-byte copy: VIDEO.json is never parsed or rewritten.
 try {
   copyFileSync(join(BOT_DIR, 'VIDEO.json'), join(OUTPUT_DIR, 'VIDEO.json'));
 } catch (err) {
