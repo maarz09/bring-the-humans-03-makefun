@@ -34,9 +34,8 @@ TOP = 470               # drawn panels start here: 70 px under the badge (y 272.
 
 # Which shot covers which voice line: (fraction of the line where the cut falls, shot name).
 SHOTS = [
-    [(0, 'hello_face'), (0.42, 'hello_wave')],
-    [(0, 'asleep')],
-    [(0, 'side_hustle')],
+    [(0, 'hello_face'), (0.4, 'side_hustle')],
+    [(0, 'hello_wave'), (0.48, 'asleep')],
     [(0, 'board_enter')],
     [(0, 'real_tasks'), (0.5, 'real_money')],
     [(0, 'vs_agents')],
@@ -85,13 +84,15 @@ def weight(word):
 def timeline_from(durs, lines):
     t, tl = 0.05, []
     for ln, d in zip(lines[:-1], durs[:-1]):
-        words = ln['caption'].split()
+        parts = [p.split() for p in ln['caption'].split(' / ')]
+        groups = [len(p) for p in parts] if len(parts) > 1 else None
+        words = [w for p in parts for w in p]
         ws = [weight(w) for w in words]
         acc, wt = 0, []
         for w, k in zip(words, ws):
             wt.append([w, t + d * acc / sum(ws)])
             acc += k
-        tl.append({'start': t, 'dur': d, 'end': t + d, 'words': wt})
+        tl.append({'start': t, 'dur': d, 'end': t + d, 'words': wt, 'groups': groups})
         t += d + ln['pause']
     T = t + 0.05
     total = T + CARD_ANIM + CARD_HOLD
@@ -99,6 +100,12 @@ def timeline_from(durs, lines):
     chunks = []
     for li, ln in enumerate(tl):
         cur = []
+        if ln['groups']:               # the caption sets its own chunks with " / " (keeps a search phrase whole)
+            k = 0
+            for g in ln['groups']:
+                chunks.append({'line': li, 'words': ln['words'][k:k + g]})
+                k += g
+            continue
         for w in ln['words']:
             if cur and (len(cur) >= 3 or len(' '.join([x[0] for x in cur] + [w[0]])) > 18):
                 chunks.append({'line': li, 'words': cur})
@@ -119,7 +126,7 @@ def timeline_from(durs, lines):
             shots.append({'name': name, 'start': st, 'line': li})
     for k, s in enumerate(shots):
         s['end'] = shots[k + 1]['start'] if k + 1 < len(shots) else total
-    return {'lines': tl, 'chunks': chunks, 'shots': shots, 'T': T, 'total': total, 'card_voice': T + 0.95}
+    return {'lines': tl, 'chunks': chunks, 'shots': shots, 'T': T, 'total': total, 'card_voice': T + 0.6}
 
 
 def shot(tlj, name):
@@ -181,7 +188,7 @@ def cmd_audio(work):
     pad = (np.sin(2 * np.pi * 4 * f * t) + np.sin(2 * np.pi * 6 * f * t)) * 0.03
     music = 0.5 * kick + hat + bass + arp + pad
     # The comedic beat: the music stops after "Then my human woke up" and comes back on the punchline.
-    g0, g1 = tl[9]['end'], tl[10]['start']
+    g0, g1 = tl[shot(tlj, 'woke')['line']]['end'], tl[shot(tlj, 'credit')['line']]['start']
     gate = np.clip(np.minimum((g0 - t) / 0.05, 1), 0, 1) + np.clip((t - g1) / 0.02, 0, 1)
     music *= np.clip(gate, 0, 1)
     music *= np.clip((total - t) / 1.2, 0, 1)                       # fade out at the end
@@ -195,7 +202,7 @@ def cmd_audio(work):
     hp = np.concatenate([[0], np.diff(noise)]) * 0.5
     for s in tlj['shots'][1:]:                                       # a whoosh on every cut
         fx += hp * np.exp(-((t - s['start']) / 0.05) ** 2) * 0.22
-    c = tl[10]['start']                                              # the punchline's impact
+    c = tl[shot(tlj, 'credit')['line']]['start']                     # the punchline's impact
     fx += np.where(t >= c, np.sin(2 * np.pi * 52 * (t - c)) * np.exp(-5 * (t - c)) * 0.55, 0)
     fx += noise * np.exp(-((t - c) / 0.03) ** 2) * 0.3
     sh = shot(tlj, 'side_hustle')                                    # typing clicks under the terminal
@@ -315,7 +322,7 @@ def shot_frame(name, tl, dur, A, tlj):
         im, _ = view(st, W, 2 * 1000, 1.05 + 0.12 * p)
         d = ImageDraw.Draw(im)
         panel(d, [120, TOP, 960, TOP + 150])
-        cmd = '> sudo get side_hustle'
+        cmd = '> sudo start ai_side_hustle'
         n = int(len(cmd) * min(1, p / 0.75))
         f = font(F_MONO, 46)
         d.text((160, TOP + 75), cmd[:n], font=f, fill=WHITE, anchor='lm')
@@ -419,15 +426,14 @@ def caption_layer(words, active):
         return CAPS[key]
     f = font(F_BLACK, 90)
     sp = f.getlength(' ')
-    lines, cur, cw = [], [], 0
-    for i, w in enumerate(words):
-        wl = f.getlength(w)
-        if cur and cw + sp + wl > 780:
-            lines.append(cur)
-            cur, cw = [], 0
-        cw = cw + (sp if cur else 0) + wl
-        cur.append(i)
-    lines.append(cur)
+    def span(idxs):
+        return sum(f.getlength(words[i]) for i in idxs) + sp * (len(idxs) - 1)
+    allw = list(range(len(words)))
+    if span(allw) <= 780 or len(words) == 1:
+        lines = [allw]
+    else:                              # two lines, split where they come out most even
+        k = min(range(1, len(words)), key=lambda k: max(span(allw[:k]), span(allw[k:])))
+        lines = [allw[:k], allw[k:]]
     layer = Image.new('RGBA', (W, 400), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     lh = 118
