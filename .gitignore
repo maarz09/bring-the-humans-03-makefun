@@ -1,0 +1,10 @@
+# Rendered video, press files and render scratch never go in this repository.
+*.mp4
+*.webm
+*.png
+*.jpg
+*.wav
+out/
+work/
+.env
+*.keypair.json
